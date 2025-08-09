@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="description" content="Upload your WAV or FLAC files and get high-quality mastering instantly. CleanMastered.com – The modern mastering platform.">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CleanMastered.com – Online Audio Mastering | WAV, FLAC</title>
+  <script src="https://unpkg.com/wavesurfer.js"></script>
+  <style>
+    body { background: #000; color: #fff; font-family: 'Segoe UI', sans-serif; margin: 0; padding: 0; }
+    h1 { text-align: center; margin: 40px 0 20px; }
+    .container { max-width: 960px; margin: auto; padding: 20px; text-align: center; }
+    .file-btn, select, button {
+      background: #000; color: #fff; border: 1px solid #fff;
+      border-radius: 6px; padding: 10px 15px; margin: 8px; cursor: pointer;
+    }
+    .file-btn:hover, button:hover { background: #fff; color: #000; }
+    .eq-slider {
+      -webkit-appearance: none; width: 80px; height: 4px; background: #fff;
+      transform: rotate(-90deg); margin: 20px 2px;
+    }
+    .eq-slider::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 10px; height: 20px; background: #000; cursor: pointer;
+    }
+    .eq-container {
+      display: flex; justify-content: center; gap: 4px; flex-wrap: nowrap; overflow-x: auto; margin-top: 40px;
+    }
+    .eq-band { text-align: center; font-size: 11px; }
+    .eq-band label { display: inline-block; margin-bottom: 32px; }
+    #waveformBottom { border: 1px solid #fff; height: 40px; flex-grow: 1; margin-top: 40px; }
+  </style>
+</head>
+<body>
+  <h1>CLEAN MASTERED</h1>
+  <div class="container">
+    <label for="audioInput" class="file-btn">Select File</label>
+    <input id="audioInput" type="file" accept="audio/*" required style="display:none;" />
+    <br/><br/>
+    <select id="masteringSelect">
+      <option value="clean">None</option>
+      <option value="soft">Soft</option>
+      <option value="normal">Normal</option>
+      <option value="high">High</option>
+      <option value="fast">Fast</option>
+      <option value="studio">Studio</option>
+    </select>
+    <select id="formatSelect">
+      <option value="wav">WAV</option>
+      <option value="flac">FLAC</option>
+    </select>
+    <select id="qualitySelect">
+      <option value="standard">Standard</option>
+      <option value="highres">High-Res</option>
+    </select>
+    <div>
+      <label><input type="checkbox" id="addReverb"> Light Reverb </label>
+    </div>
+
+    <div class="eq-container">
+      <!-- EQ Bands -->
+<div class='eq-band'><label>60Hz</label><br><input type='range' name='eq60' min='-12' max='12' value='0' step='0.5' class='eq-slider'></div>
+<div class='eq-band'><label>120Hz</label><br><input type='range' name='eq120' min='-12' max='12' value='0' step='0.5' class='eq-slider'></div>
+<div class='eq-band'><label>250Hz</label><br><input type='range' name='eq250' min='-12' max='12' value='0' step='0.5' class='eq-slider'></div>
+<div class='eq-band'><label>500Hz</label><br><input type='range' name='eq500' min='-12' max='12' value='0' step='0.5' class='eq-slider'></div>
+<div class='eq-band'><label>1000Hz</label><br><input type='range' name='eq1000' min='-12' max='12' value='0' step='0.5' class='eq-slider'></div>
+<div class='eq-band'><label>2000Hz</label><br><input type='range' name='eq2000' min='-12' max='12' value='0' step='0.5' class='eq-slider'></div>
+<div class='eq-band'><label>4000Hz</label><br><input type='range' name='eq4000' min='-12' max='12' value='0' step='0.5' class='eq-slider'></div>
+<div class='eq-band'><label>8000Hz</label><br><input type='range' name='eq8000' min='-12' max='12' value='0' step='0.5' class='eq-slider'></div>
+<div class='eq-band'><label>16000Hz</label><br><input type='range' name='eq16000' min='-12' max='12' value='0' step='0.5' class='eq-slider'></div>
+    </div>
+    <br/>
+    <div>
+      <button onclick="savePreset()">💾 Save Preset</button>
+      <button onclick="loadPreset()">📂 Load Preset</button>
+    </div>
+    <br/>
+    <button id="btnMaster">Master This Version</button>
+    <hr style="border: none; border-top: 4px solid white; margin: 40px 0;">
+    <div id="result" style="text-align:center; font-size: 18px;">
+      <p style="font-style: italic; color: #ccc;">Final Mastered Output → High Fidelity, Your Way</p>
+    </div>
+    <p id="lufsDisplay" style="color:#aaa;"></p>
+    <div style="margin-top: 20px; display: flex; align-items: center; gap: 10px;">
+      <button id="btnToggleBottom" style="padding: 8px 16px;">▶</button>
+      <div id="waveformBottom"></div>
+    </div>
+  </div>
+
+  <script>
+    const file = document.getElementById("audioInput"), result = document.getElementById("result");
+    let wavesurferBottom, audioContext, sourceNode, eqNodes = [], gainNode;
+
+    const frequencies = [60,120,250,500,1000,2000,4000,8000,16000];
+
+    function setupAudioGraph(fileUrl) {
+      if (audioContext) audioContext.close();
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      eqNodes = frequencies.map(() => audioContext.createBiquadFilter());
+      gainNode = audioContext.createGain();
+
+      fetch(fileUrl)
+        .then(response => response.arrayBuffer())
+        .then(arrayBuffer => audioContext.decodeAudioData(arrayBuffer))
+        .then(audioBuffer => {
+          sourceNode = audioContext.createBufferSource();
+          sourceNode.buffer = audioBuffer;
+          eqNodes.forEach((filter, i) => {
+            filter.type = "peaking";
+            filter.frequency.value = frequencies[i];
+            filter.Q.value = 1;
+            filter.gain.value = parseFloat(document.querySelector(`input[name='eq${filter.frequency.value}']`).value || 0);
+          });
+          sourceNode.connect(eqNodes[0]);
+          for (let i = 0; i < eqNodes.length - 1; i++) eqNodes[i].connect(eqNodes[i+1]);
+          eqNodes[eqNodes.length-1].connect(gainNode);
+          gainNode.connect(audioContext.destination);
+          updateGainForMasteringMode(document.getElementById("masteringSelect").value);
+          sourceNode.start(0);
+        });
+    }
+
+    function updateGainForMasteringMode(mode) {
+      const dBMap = { soft: -1.5, normal: 0.5, high: 2.5, fast: 4, studio: 5 };
+      const dB = dBMap[mode] || 0;
+      const gainValue = Math.pow(10, dB / 20);
+      if (gainNode) gainNode.gain.setValueAtTime(gainValue, audioContext.currentTime);
+    }
+
+    document.getElementById("masteringSelect").addEventListener("change", e => {
+      updateGainForMasteringMode(e.target.value);
+    });
+
+    document.querySelectorAll('.eq-slider').forEach((slider, i) => {
+      slider.addEventListener('input', () => {
+        if (eqNodes[i]) eqNodes[i].gain.value = parseFloat(slider.value);
+      });
+    });
+
+    document.getElementById("btnToggleBottom").onclick = () => {
+      if (!wavesurferBottom) return;
+      const btn = document.getElementById("btnToggleBottom");
+      if (wavesurferBottom.isPlaying()) { wavesurferBottom.pause(); btn.textContent = "▶"; }
+      else { wavesurferBottom.play(); btn.textContent = "❚❚"; }
+    };
+
+    document.getElementById("btnMaster").onclick = () => {
+      if (!file.files.length) { alert("Please upload a file first"); return; }
+      const data = new FormData();
+      data.append("file", file.files[0]);
+      data.append("mode", document.getElementById("masteringSelect").value);
+      data.append("format", document.getElementById("formatSelect").value);
+      data.append("quality", document.getElementById("qualitySelect").value);
+      data.append("reverb", document.getElementById("addReverb").checked ? "yes" : "no");
+      frequencies.forEach(b => {
+        const val = document.querySelector(`input[name='eq${b}']`).value;
+        data.append(`eq${b}`, val);
+      });
+      fetch("https://cleanmastering.onrender.com/master", { method: "POST", body: data })
+        .then(r => r.json()).then(d => {
+        if (d.url) {
+          result.innerHTML = '<a href="' + d.url + '" download><button>Download</button></a>';
+          initWaveSurferBottom(d.url);
+          setupAudioGraph(d.url);
+          document.getElementById("lufsDisplay").textContent = "Estimated LUFS: " + (d.lufs || "-");
+        } else result.textContent = "Error: No file returned.";
+      }).catch(e => {
+        result.textContent = "Request failed: " + e;
+      });
+    };
+
+    function initWaveSurferBottom(url) {
+      if (wavesurferBottom) wavesurferBottom.destroy();
+      wavesurferBottom = WaveSurfer.create({
+        container: "#waveformBottom", height: 40,
+        waveColor: "#fff", progressColor: "#0f0", barWidth: 2, normalize: true
+      });
+      wavesurferBottom.load(url);
+    }
+
+    function savePreset() {
+      const preset = {
+        mode: document.getElementById("masteringSelect").value,
+        quality: document.getElementById("qualitySelect").value,
+        format: document.getElementById("formatSelect").value,
+        reverb: document.getElementById("addReverb").checked,
+        eq: Object.fromEntries(frequencies.map(b => ["eq"+b, document.querySelector(`input[name='eq${b}']`).value]))
+      };
+      localStorage.setItem("masteringPreset", JSON.stringify(preset));
+      alert("Preset saved!");
+    }
+
+    function loadPreset() {
+      const preset = JSON.parse(localStorage.getItem("masteringPreset") || "null");
+      if (!preset) return alert("No preset saved.");
+      document.getElementById("masteringSelect").value = preset.mode;
+      document.getElementById("qualitySelect").value = preset.quality;
+      document.getElementById("formatSelect").value = preset.format;
+      document.getElementById("addReverb").checked = preset.reverb;
+      Object.entries(preset.eq).forEach(([k,v]) => {
+        const el = document.querySelector(`input[name='${k}']`);
+        if (el) el.value = v;
+      });
+    }
+  </script>
+  <p style="text-align: center; color: white; font-size: 14px;">
+  Contact: <a href="mailto:prosound@cleanmastered.com" style="color: #00ff88;">
+  prosound@cleanmastered.com
+</a></p>
+
+
+  <footer style="margin-top:60px; font-size:14px; color:#00ff88;">
+    <p><b> Monthly Bonus:</b> Every user can download <u>1 free mastered WAV or FLAC</u> file per month in high-resolution.</p>
+    <p><b>🎧 Compared to manual mastering:</b> CLEANMASTERED uses LUFS balancing, stereo enhancement, EQ curves and dynamic-safe gain adjustments to offer professional results without harsh compression.</p>
+    <p><b> Support and Payments:</b> Donations and payments will be added soon.</p>
+    <p> Contact: <a href="mailto:procleansound@globalmastered.com" style="color: #00ff88;">procleansound@globalmastered.com</a></p>
+  <!-- Bismillah: In the name of Allah, the Most Gracious, the Most Merciful -->
+  </footer>
+</body>
+</html>
