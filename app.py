@@ -10,7 +10,7 @@ def ext_ok(filename):
 
 @app.get("/")
 def home():
-    return "Clean Mastered — Docker OK"
+    return send_file("static/index.html")
 
 @app.post("/master")
 def master():
